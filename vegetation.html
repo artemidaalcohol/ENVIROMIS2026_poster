@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" id="vp">
 <title>Peatland GPP Explorer</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 <style>
@@ -112,10 +113,10 @@ body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,sans
 <div id="ph-splash">
   <div style="font-size:3rem;margin-bottom:16px">🌱</div>
   <h1>Peatland Vegetation<br>GPP Explorer</h1>
-  <p>15 model experiments · 3 PFT types · Frolking WTD correction · Mukhino flux-tower 2023</p>
+  <p>15 model experiments · 3 PFT types · Frolking WTD correction · Mukhrino flux-tower 2023</p>
   <button class="btn grn" onclick="showConfig()">Configure experiment →</button>
   <div style="margin-top:24px;font-size:0.67rem;color:var(--mut);line-height:1.7">
-    ENVIROMIS-2026 · TerM model · А.И. Аббазов · ИМЦЭС СО РАН
+    ENVIROMIS-2026 · TerM model · А.И. Аббазов · ИМКЭС СО РАН
   </div>
 </div>
 
@@ -231,7 +232,7 @@ let mainChart,scatChart;
 // ── Nav helpers ───────────────────────────────────────────────────────────────
 function h(id){document.getElementById(id).style.display='none';}
 function s(id,d){document.getElementById(id).style.display=d||'block';}
-function showSplash(){h('ph-config');h('ph-rotate');h('ph-chart');s('ph-splash','flex');}
+function showSplash(){h('ph-config');h('ph-rotate');h('ph-chart');document.getElementById('ph-chart').classList.remove('active');s('ph-splash','flex');}
 function showConfig(){h('ph-splash');h('ph-rotate');h('ph-chart');s('ph-config','block');buildCfgList();}
 function proceedToChart(){
   h('ph-config');
@@ -244,7 +245,7 @@ function backToConfig(){
 }
 function enterChart(){
   h('ph-rotate');
-  document.getElementById('ph-chart').className='active';
+  document.getElementById('ph-chart').style.display='flex';
   if(!chartsInited){initCharts();chartsInited=true;}
   buildSidebarRuns();
   renderCharts();
@@ -482,7 +483,6 @@ window.addEventListener('resize',()=>{
 buildCfgList();
 </script>
 
-<!-- Chart.js date adapter for time scale -->
-<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+
 </body>
 </html>

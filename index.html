@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>TerM Peatland — ENVIROMIS 2026</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0d1117;color:#e6edf3;font-family:'Segoe UI',system-ui,sans-serif;
+  max-width:420px;margin:0 auto;padding:20px 12px;min-height:100vh;
+  display:flex;flex-direction:column;align-items:center;justify-content:center}
+.conf{font-size:0.72rem;color:#8b949e;background:#161b22;border:1px solid #30363d;
+  border-radius:8px;padding:8px 16px;margin-bottom:24px;text-align:center}
+h1{font-size:1.3rem;color:#58a6ff;text-align:center;margin-bottom:6px;line-height:1.3}
+.sub{color:#8b949e;text-align:center;font-size:0.8rem;margin-bottom:32px;line-height:1.5}
+.cards{display:flex;flex-direction:column;gap:14px;width:100%}
+.card{background:#161b22;border:1px solid #30363d;border-radius:14px;
+  padding:24px 20px;text-decoration:none;color:inherit;display:block;transition:all 0.2s}
+.card:active{opacity:0.8;transform:scale(0.98)}
+.emoji{font-size:2.5rem;margin-bottom:12px}
+.card h2{font-size:1rem;margin-bottom:6px}
+.card p{color:#8b949e;font-size:0.78rem;line-height:1.6}
+.tag{display:inline-block;margin-top:12px;padding:4px 12px;border-radius:20px;
+  font-size:0.7rem;background:rgba(88,166,255,0.15);border:1px solid rgba(88,166,255,0.3);color:#58a6ff}
+.tag.g{background:rgba(63,185,80,0.15);border-color:rgba(63,185,80,0.3);color:#3fb950}
+.footer{margin-top:32px;color:#8b949e;font-size:0.72rem;text-align:center;line-height:1.8}
+</style>
+</head>
+<body>
+<div class="conf">ENVIROMIS-2026 · Новосибирск · 29 июня – 4 июля 2026</div>
+<h1>TerM — Peatland Carbon Module</h1>
+<p class="sub">А.И. Аббазов · В.Ю. Богомолов · Е.А. Дюкарев<br>
+ИМЦЭС СО РАН · ТГУ · ФИЦ ИВТ</p>
+<div class="cards">
+  <a class="card" href="heterotrophic.html">
+    <div class="emoji">🌍</div>
+    <h2>Heterotrophic Respiration Model</h2>
+    <p>Interactive vertical soil column · Layer-by-layer decomposition · Aerobic/anaerobic diagnostics</p>
+    <div class="tag">Interactive simulation</div>
+  </a>
+  <a class="card" href="vegetation.html">
+    <div class="emoji">🌿</div>
+    <h2>Wetland Vegetation — GPP Explorer</h2>
+    <p>15 model experiments · 3 PFT types · Frolking WTD correction · Flux-tower observations</p>
+    <div class="tag g">15 experiments · May–Oct 2023</div>
+  </a>
+</div>
+<div class="footer">Carbon polygon Mukhino · TerM model (ИВМ РАН)</div>
+</body>
+</html>

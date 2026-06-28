@@ -116,7 +116,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;heigh
 
 <div class="card">
   <div class="ctitle">Parameters</div>
-  <div class="cl">Temperature, °C <span id="lT">15</span></div>
+  <div class="cl">Mean peat temperature, °C <span id="lT">15</span></div>
   <input type="range" min="5" max="35" value="15" id="sT" oninput="update()">
   <div class="cl">Water table depth, cm <span id="lW">30</span></div>
   <input type="range" min="0" max="100" value="30" id="sW" oninput="update()">
@@ -135,11 +135,11 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;heigh
   <div class="cmp">
     <div class="mbox">
       <div class="mhdr bulk">Bulk (2-zone)</div>
-      <div class="mnote">Acrotelm + Catotelm<br>One averaged k per zone<br>Mass-weighted</div>
+      <div class="mnote">Acrotelm + Catotelm<br>Fixed 2 m column<br>One averaged k per zone</div>
     </div>
     <div class="mbox">
       <div class="mhdr lay">Layered (TerM)</div>
-      <div class="mnote">23 levels · 0–10 m<br>k(l), T(z), W(z) per layer<br>Independent solution</div>
+      <div class="mnote">23 levels · 0–10 m<br>Carbon fills 0→peat depth<br>Below = mineral substratum</div>
     </div>
   </div>
 
@@ -215,111 +215,162 @@ const K_BOG=[0.11467,0.08805,0.06264,0.03448,0.01836,0.01018,0.00317,1.85e-5,1.1
 const K_FEN=[0.15810,0.07205,0.03261,0.01237,0.00409,0.00120,1.47e-4,4.09e-5,3.02e-5,2.27e-5,1.70e-5,1.41e-5,1.21e-5,1.05e-5,9.31e-6,8.70e-6,7.40e-6,6.48e-6,5.56e-6,3.02e-6,3.02e-6,3.02e-6,3.02e-6];
 const DEPTHS=[0.05,0.10,0.15,0.20,0.25,0.30,0.40,0.50,0.60,0.80,1.0,1.2,1.5,2.0,2.5,3.0,3.5,4.0,4.5,5.5,6.5,7.5,9.0];
 const DZ    =[0.05,0.05,0.05,0.05,0.05,0.05,0.10,0.10,0.10,0.20,0.2,0.2,0.3,0.5,0.5,0.5,0.5,0.5,0.5,1.0,1.0,1.0,1.5];
-const VIZ   =[0.05,0.15,0.30,0.60,1.0,2.0,4.0,7.0]; // illustrative 8 layers
-const VIZ_H =[26,26,26,28,30,34,38,42];
+// ── Illustrative 8-layer grid (fixed, depth labels scale with pd slider) ──
+// The GRID is fixed at 23 levels in the real model — pd controls how many
+// layers have carbon (from top down). Below pd = mineral substratum.
+const VIZ_N = 8; // illustrative layers shown
 const FANOX ={bog:0.025,fen:0.10};
 let wtype='bog';
 
 const q10=T=>Math.pow(1.44+0.56*Math.tanh(0.075*(46-T)),0.1*(T-15));
 
-function computeLayered(T,wtdCm,pd,cd){
+// Temperature profile: mean T at surface, realistic lapse down the column
+// T_surface is the AVERAGE temperature of the peat layer (not skin T)
+// Profile: warmer near surface, cools below, minimum at mineral contact
+function tempProfile(Tmean, depth, pd){
+  // Simple: T(z) = Tmean + amplitude*(0.5 - z/pd)
+  // so surface is slightly warmer, mineral base is cooler
+  const amp = 4.0; // °C amplitude across peat
+  return Math.max(0, Tmean + amp*(0.5 - depth/Math.max(pd,0.1)));
+}
+
+function computeLayered(Tmean,wtdCm,pd,cd){
   const k=wtype==='bog'?K_BOG:K_FEN, wtd=wtdCm/100, fa=FANOX[wtype];
   return DEPTHS.map((d,i)=>{
-    if(d>pd) return{r:0,raer:0,ranox:0,d,active:false,belowWT:d>wtd};
-    const Tl=Math.max(5,T-d*0.7);
+    // Carbon only in peat layers (0..pd). Below pd = mineral, no carbon.
+    if(d>pd) return{r:0,raer:0,ranox:0,d,active:false,belowWT:d>wtd,isMineral:true};
+    const Tl=Math.max(0, tempProfile(Tmean, d, pd));
+    if(Tl<5) return{r:0,raer:0,ranox:0,d,active:true,belowWT:d>wtd,isMineral:false,cold:true};
     const ft=q10(Tl);
     const belowWT=d>wtd;
-    // below WTD = saturated = anaerobic dominant
     const wsg=belowWT?0.92:0.10;
-    const C=cd*DZ[i];
+    const C=cd*DZ[i]; // Carbon stock in this layer [kgC/m²]
     const raer=k[i]*C*ft*(1-wsg)*2.64;
     const ranox=k[i]*C*ft*wsg*fa*2.64;
-    return{r:raer+ranox,raer,ranox,d,belowWT,active:true,ft};
+    return{r:raer+ranox,raer,ranox,d,belowWT,active:true,isMineral:false,ft,Tl,C};
   });
 }
 
-function computeBulk(T,wtdCm,pd,cd){
+// Bulk 2-zone: FIXED depth 2 m (illustrative comparison)
+// Acrotelm = 0..WTD, Catotelm = WTD..2m
+// Uses depth-averaged k within each zone
+const BULK_DEPTH = 2.0; // m — fixed for illustration
+function computeBulk(Tmean,wtdCm,pd,cd){
   const k=wtype==='bog'?K_BOG:K_FEN, wtd=wtdCm/100, fa=FANOX[wtype];
-  const ft=q10(T);
+  const effPD=Math.min(pd,BULK_DEPTH); // bulk only goes to 2m or peat depth
+  const ftA=q10(tempProfile(Tmean,wtd*0.5,pd));  // avg T in acrotelm
+  const ftC=q10(tempProfile(Tmean,(wtd+effPD)*0.5,pd)); // avg T in catotelm
   let kA=0,dA=0,kC=0,dC=0;
   DEPTHS.forEach((d,i)=>{
-    if(d>pd) return;
+    if(d>effPD) return;
     if(d<=wtd){kA+=k[i]*DZ[i];dA+=DZ[i];}
-    else      {kC+=k[i]*DZ[i];dC+=DZ[i];}
+    else       {kC+=k[i]*DZ[i];dC+=DZ[i];}
   });
   const kAv=dA>0?kA/dA:0, kCv=dC>0?kC/dC:0;
-  const CA=cd*Math.min(wtd,pd), CC=cd*Math.max(0,pd-wtd);
-  const rA=kAv*CA*ft*0.90*2.64;
-  const rC=(kCv*CC*ft*(1-0.92)*2.64)+(kCv*CC*ft*0.92*fa*2.64);
-  return{total:rA+rC,rA,rC};
+  const CA=cd*Math.min(wtd,effPD);
+  const CC=cd*Math.max(0,effPD-wtd);
+  const rA=kAv*CA*ftA*0.90*2.64;
+  const rC=(kCv*CC*ftC*(1-0.92)*2.64)+(kCv*CC*ftC*0.92*fa*2.64);
+  return{total:rA+rC,rA,rC,effPD};
 }
 
-// Build bulk column: 2 zones only
+// ── Bulk column: fixed 2 m, acro/cato zones ──────────────────────────────────
 function makeBulkCol(wtdCm,pd){
   const el=document.getElementById('col-bulk'); el.innerHTML='';
   const wtd=wtdCm/100;
-  const acroH=Math.round(Math.max(24,Math.min(100,(Math.min(wtd,pd)/pd)*160)));
-  const catoH=Math.round(Math.max(24,Math.min(100,(Math.max(0,pd-wtd)/pd)*160)));
+  const TOTAL_H=180; // px total column height = 2m
+  const pxPerM=TOTAL_H/BULK_DEPTH;
+  const acroH=Math.round(Math.min(wtd,BULK_DEPTH)*pxPerM);
+  const catoH=Math.round(Math.max(0,BULK_DEPTH-wtd)*pxPerM);
+  const peatH=Math.round(Math.min(pd,BULK_DEPTH)*pxPerM);
+  const mineralH=TOTAL_H-peatH;
 
-  if(wtd>0&&wtd<pd){
-    // Acrotelm — aerobic, warm/dry colour
+  // Acrotelm (aerobic, orange)
+  if(acroH>0){
     el.innerHTML+=`<div class="s-layer" style="height:${acroH}px;background:#2A1A08">
-      <div class="s-fill" style="background:rgba(240,122,42,0.18)"></div>
-      <span class="s-depth" style="z-index:1">Acro-<br>telm</span>
-      <span class="s-val" style="z-index:1;color:var(--ora);font-size:0.6rem">aerobic</span>
-    </div>
-    <div class="wtd-div"><span class="wtd-tag">WTD ${wtdCm} cm</span></div>`;
-    // Catotelm — anaerobic, saturated blue
-    el.innerHTML+=`<div class="s-layer" style="height:${catoH}px;background:#082030">
-      <div class="s-fill" style="background:rgba(76,168,255,0.32)"></div>
-      <span class="s-depth" style="z-index:1">Cato-<br>telm</span>
-      <span class="s-val" style="z-index:1;color:var(--blu);font-size:0.6rem">anaerobic</span>
+      <div class="s-fill" style="background:rgba(240,122,42,0.22)"></div>
+      <span class="s-depth" style="z-index:1">Acrotelm</span>
+      <span class="s-val" style="z-index:1;color:var(--ora);font-size:0.59rem">aerobic</span>
     </div>`;
-  } else if(wtd<=0){
-    el.innerHTML+=`<div class="wtd-div"><span class="wtd-tag">WTD 0 cm</span></div>
-    <div class="s-layer" style="height:120px;background:#082030">
-      <div class="s-fill" style="background:rgba(76,168,255,0.32)"></div>
-      <span class="s-depth" style="z-index:1">Fully<br>satur.</span>
-    </div>`;
-  } else {
-    el.innerHTML+=`<div class="s-layer" style="height:120px;background:#2A1A08">
-      <div class="s-fill" style="background:rgba(240,122,42,0.18)"></div>
-      <span class="s-depth" style="z-index:1">Fully<br>aerobic</span>
-    </div>
-    <div class="wtd-div"><span class="wtd-tag">WTD ${wtdCm} cm (below peat)</span></div>`;
   }
+  // WTD line
+  el.innerHTML+=`<div class="wtd-div"><span class="wtd-tag">WTD ${wtdCm}cm</span></div>`;
+  // Catotelm (anaerobic, blue) — only within peat
+  const catoInPeat=Math.round(Math.max(0,Math.min(pd,BULK_DEPTH)-wtd)*pxPerM);
+  if(catoInPeat>0){
+    el.innerHTML+=`<div class="s-layer" style="height:${catoInPeat}px;background:#082030">
+      <div class="s-fill" style="background:rgba(76,168,255,0.34)"></div>
+      <span class="s-depth" style="z-index:1">Catotelm</span>
+      <span class="s-val" style="z-index:1;color:var(--blu);font-size:0.59rem">anaerobic</span>
+    </div>`;
+  }
+  // Mineral substratum (if pd < 2m)
+  if(mineralH>4){
+    el.innerHTML+=`<div class="s-layer" style="height:${mineralH}px;background:#1A1410;opacity:0.7">
+      <span class="s-depth" style="z-index:1;color:#8B7355">Mineral</span>
+    </div>`;
+  }
+  // Scale label
+  el.innerHTML+=`<div style="font-size:0.55rem;color:var(--mut);text-align:right;padding:2px 4px">0–2 m fixed</div>`;
 }
 
-// Build layered column: each VIZ layer fills with blue proportional to saturation below WTD
+// ── Layered column: grid fixed, carbon fills from top down to pd ─────────────
+// VIZ shows illustrative 8 layers spanning 0..max(pd,2)m
+// Layers ABOVE pd = carbon-bearing peat; BELOW pd = mineral (no carbon)
 function makeLayerCol(wtdCm,pd){
   const el=document.getElementById('col-lay'); el.innerHTML='';
   const wtd=wtdCm/100;
-  let wtdInserted=false;
+  // Show layers covering at least 2m or pd, max 8m
+  const showMax=Math.max(pd+0.5, 2.0);
+  // Generate 8 illustrative layer boundaries
+  const vizDepths=[];
+  const vizH=[];
+  const steps=[0.1,0.2,0.3,0.5,1.0,2.0,4.0,7.0];
+  steps.forEach(d=>{
+    if(d<=showMax+0.1){vizDepths.push(d); vizH.push(22+Math.round(d*3));}
+  });
+  const TOTAL_H=vizH.reduce((a,b)=>a+b,0);
+  const pxPerM=TOTAL_H/showMax;
 
-  VIZ.forEach((d,i)=>{
-    if(d>pd+0.5) return;
-    const belowWT=d>wtd;
-    // insert WTD line before first saturated layer
-    if(!wtdInserted && belowWT){
-      el.innerHTML+=`<div class="wtd-div"><span class="wtd-tag">WTD ${wtdCm} cm</span></div>`;
+  let wtdInserted=false;
+  let prevD=0;
+
+  vizDepths.forEach((d,i)=>{
+    // Insert WTD line
+    if(!wtdInserted && d>wtd && wtd>=prevD){
+      const fracAbove=(wtd-prevD)/(d-prevD);
+      const pxAbove=Math.round(vizH[i]*fracAbove);
+      if(pxAbove>3){
+        const belA=false;
+        el.innerHTML+=`<div class="s-layer" style="height:${pxAbove}px;background:#1C1208">
+          <div class="s-fill" style="background:rgba(240,122,42,0.18)"></div>
+          <span class="s-depth" style="z-index:1">${prevD.toFixed(2)}m</span>
+        </div>`;
+      }
+      el.innerHTML+=`<div class="wtd-div"><span class="wtd-tag">WTD ${wtdCm}cm</span></div>`;
       wtdInserted=true;
     }
-    // Saturation: below WTD = filled with water (blue, semi-transparent)
-    // Above WTD = dry/warm (orange tint)
-    const bgBase=belowWT?'#082030':'#1C1208';
-    const fillBg=belowWT?'rgba(76,168,255,0.35)':'rgba(240,122,42,0.15)';
-    // Water fill opacity increases deeper below WTD
-    const fillOp=belowWT?Math.min(0.6,0.3+(d-wtd)*0.15):0.12;
 
-    el.innerHTML+=`<div class="s-layer" style="height:${VIZ_H[i]}px;background:${bgBase}">
-      <div class="s-fill" style="background:${belowWT?`rgba(76,168,255,${fillOp})`:`rgba(240,122,42,0.15)`};opacity:1"></div>
-      <span class="s-depth" style="z-index:1">${d.toFixed(2)} m</span>
+    const belowWT=d>wtd;
+    const isMineral=d>pd;
+    // Water fill opacity increases with depth below WTD
+    const fillOp=belowWT?Math.min(0.65,0.25+(d-wtd)*0.12):0.0;
+    const bgBase=isMineral?'#1A1410':(belowWT?'#082030':'#1C1208');
+    const fill=isMineral?'':`<div class="s-fill" style="background:${belowWT?`rgba(76,168,255,${fillOp})`:'rgba(240,122,42,0.16)'}"></div>`;
+    const depLabel=`${d.toFixed(2)}m`;
+    const mineralMark=isMineral?'<span style="font-size:0.57rem;color:#8B7355;z-index:1;margin-left:auto">mineral</span>':'';
+    el.innerHTML+=`<div class="s-layer" style="height:${vizH[i]}px;background:${bgBase};${isMineral?'opacity:0.65':''}">
+      ${fill}
+      <span class="s-depth" style="z-index:1">${depLabel}</span>
+      ${mineralMark}
     </div>`;
+    prevD=d;
   });
 
   if(!wtdInserted){
-    el.innerHTML+=`<div class="wtd-div"><span class="wtd-tag">WTD ${wtdCm} cm</span></div>`;
+    el.innerHTML+=`<div class="wtd-div"><span class="wtd-tag">WTD ${wtdCm}cm</span></div>`;
   }
+  el.innerHTML+=`<div style="font-size:0.55rem;color:var(--mut);text-align:right;padding:2px 4px">grid fixed · C fills 0–${pd.toFixed(1)}m</div>`;
 }
 
 // Charts

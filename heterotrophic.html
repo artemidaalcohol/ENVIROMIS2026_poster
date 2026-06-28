@@ -190,23 +190,10 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;heigh
 
 <div class="card">
   <div class="ctitle">Decomposition rate k(depth) — 4 orders of magnitude</div>
-  <div class="cw" style="height:170px"><canvas id="kChart"></canvas></div>
+  <div class="cw" style="height:480px"><canvas id="kChart"></canvas></div>
 </div>
 
-<div class="card">
-  <div class="ctitle">Algorithm · per layer l</div>
-  <div class="fml"><span class="cm">! BELOW water table → saturated (anaerobic)</span>
-<span class="cm">! ABOVE water table → unsaturated (aerobic)</span>
 
-WSG  = WL·θ / POR(l)          <span class="cm">! saturation</span>
-f_T  = <span class="fn">Q10</span>(T_l)^(<span class="nm">0.1</span>·(T_l−<span class="nm">15</span>)) <span class="cm">! temp factor</span>
-
-R_aer  = k(l)·C(l)·f_T·(<span class="nm">1</span>−WSG)   <span class="cm">! aerobic</span>
-R_anox = k(l)·C(l)·f_T·WSG·<span class="fn">F_ANOX</span> <span class="cm">! anaerobic</span>
-R(l) = <span class="nm">2.64</span>·(R_aer + R_anox)   <span class="cm">! µmol/m²/s</span>
-
-R_het = Σ R(l) over 23 layers</div>
-</div>
 
 </div><!-- /app -->
 
@@ -401,16 +388,30 @@ const tempChart=new Chart(document.getElementById('tempChart'),{type:'line',
             y:{...bo.scales.y,min:0,max:4,title:{display:true,text:'f_temp',font:{size:9}}}}}
 });
 
-const kChart=new Chart(document.getElementById('kChart'),{type:'line',
-  data:{labels:DEPTHS.map(d=>d.toFixed(2)),datasets:[
-    {label:'Bog',data:K_BOG,borderColor:'#8B6914',borderWidth:2,pointRadius:2,fill:false,tension:0.3},
-    {label:'Fen',data:K_FEN,borderColor:'#4CA8FF',borderWidth:2,pointRadius:2,fill:false,tension:0.3}
+// k chart: x=k (log), y=depth (inverted so surface at top)
+const kChart=new Chart(document.getElementById('kChart'),{type:'scatter',
+  data:{datasets:[
+    {label:'Bog',
+     data:DEPTHS.map((d,i)=>({x:K_BOG[i],y:d})),
+     borderColor:'#8B6914',backgroundColor:'#8B691488',
+     borderWidth:1.5,pointRadius:4,pointHoverRadius:6,showLine:true,tension:0.3},
+    {label:'Fen',
+     data:DEPTHS.map((d,i)=>({x:K_FEN[i],y:d})),
+     borderColor:'#4CA8FF',backgroundColor:'#4CA8FF88',
+     borderWidth:1.5,pointRadius:4,pointHoverRadius:6,showLine:true,tension:0.3}
   ]},
   options:{...JSON.parse(JSON.stringify(bo)),
-    scales:{x:{...bo.scales.x,title:{display:true,text:'Depth (m)',font:{size:9}}},
-            y:{...bo.scales.y,type:'logarithmic',
-              ticks:{callback:v=>v.toExponential(0),font:{size:9}},
-              title:{display:true,text:'k (yr⁻¹)',font:{size:9}}}}}
+    scales:{
+      x:{type:'logarithmic',
+         title:{display:true,text:'k (yr⁻¹)',font:{size:9}},
+         grid:{color:'#1A2320'},
+         ticks:{callback:v=>{const e=Math.round(Math.log10(v));return v===Math.pow(10,e)?`10^${e}`:'';},font:{size:8}}},
+      y:{title:{display:true,text:'Depth (m)',font:{size:9}},
+         grid:{color:'#1A2320'},
+         ticks:{font:{size:9}},
+         reverse:true,  // surface (0m) at top
+         min:0, max:10}
+    }}
 });
 
 function update(){
